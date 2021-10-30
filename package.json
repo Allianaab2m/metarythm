@@ -1,0 +1,25 @@
+{
+  "name": "metarythm",
+  "version": "0.1.0",
+  "description": "Rythm",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "run": "node ./build/main.js",
+    "compile": "tsc -p .",
+    "debug": "ts-node ./src/main.ts debug"
+  },
+  "author": "Alliana",
+  "license": "ISC",
+  "dependencies": {
+    "@discordjs/opus": "^0.5.3",
+    "@discordjs/voice": "^0.7.1",
+    "discord.js": "^13.3.0",
+    "dotenv": "^10.0.0",
+    "eslint-typescript": "^1.1.0",
+    "ts-node": "^10.4.0",
+    "tweetnacl": "^1.0.3",
+    "typescript": "^4.4.4",
+    "ytdl-core": "^4.9.1"
+  }
+}
