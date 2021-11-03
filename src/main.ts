@@ -1,8 +1,7 @@
-import { Client, VoiceChannel, StageChannel }from 'discord.js'
-import { entersState, AudioPlayerStatus, createAudioPlayer, createAudioResource, joinVoiceChannel, StreamType, AudioPlayer  } from '@discordjs/voice'
-import ytdl from 'ytdl-core'
+import { Client, GuildChannelResolvable }from 'discord.js'
 import dotenv from 'dotenv'
-import { createDiscordJSAdapter } from './adapter'
+import { Player, Queue } from 'discord-music-player'
+
 
 // dotenv初期設定
 dotenv.config()
@@ -16,7 +15,13 @@ const prefix = 'm.'
 // Clientオブジェクトの作成
 const client = new Client({
    intents: 32767,
-   partials: ['MESSAGE', 'CHANNEL', 'REACTION']
+})
+
+// Playerオブジェクトの作成
+const player = new Player(client, {
+   leaveOnEmpty: true,
+   leaveOnStop: false,
+   deafenOnJoin: true,
 })
 
 // bot準備完了時の処理
@@ -35,53 +40,40 @@ client.on('messageCreate', async (message) => {
 
    // コマンドと引数を分割
    const [command, ...args] = message.content.slice(prefix.length).split(' ')
+   let guildQueue: Queue = player.createQueue(message.guild.id)
+
    switch (command) {
       case 'play':
          const url = args[0]
-         // url無い時，VCに入っていない時,videoIDが取れない時のコマンドは弾く
-         if (!url) {
-            message.channel.send('URLが指定されていないようです。') // Embed
-            return
-         }
-         if (message.member?.voice.channel === null) {
-            message.channel.send('VCに入っていないようです。') // Embed Ref1
-            return
-         }
-         if (!ytdl.validateURL(url)) {
-            message.channel.send('URLが正しくないようです。') // Embed
-            return
-         }
-         // StageChannelだった時困るのでasで強制変換
-         const authorVoiceChannel = message.member?.voice.channel as VoiceChannel
+         let queue = player.createQueue(message.guild.id)
 
-         // connection作成(D.js Jpの記事参照)
-         const connection = joinVoiceChannel({
-            adapterCreator: createDiscordJSAdapter(authorVoiceChannel),
-            channelId: authorVoiceChannel.id,
-            guildId: authorVoiceChannel.guild.id,
-            selfDeaf: true,
-            selfMute: false,
+         // ごめん，TypeScript as使うしか無かったんだ...
+         await queue.join(message.member?.voice.channel as GuildChannelResolvable) // TODO Embedで曲情報表示
+         let song = await queue.play(url).catch(() => {
+            if (!guildQueue) {
+               queue.stop()
+            }
          })
+         break
 
-         const player: AudioPlayer = createAudioPlayer()
-         connection.subscribe(player)
+      case 'stop':
+         guildQueue?.setPaused(!guildQueue.paused) // TODO Embedにする
+         break
 
-         const stream = ytdl(ytdl.getURLVideoID(url), {
-            filter: (format) => format.audioCodec === 'opus' && format.container === 'webm',
-            quality: 'highest',
-            highWaterMark: 32 * 1024 * 1024,
-         })
+      case 'skip':
+         guildQueue?.skip() // TODO Embedにする
+         break
 
-         const resource = createAudioResource(stream, {
-            inputType: StreamType.WebmOpus
-         })
+      case 'disconnect':
+         guildQueue.destroy()
+         break
 
-         player.play(resource)
-
-         await entersState(player, AudioPlayerStatus.Playing, 10 * 1000)
-         await entersState(player, AudioPlayerStatus.Idle, 24 * 60 * 60 * 1000)
-
-         connection.destroy()
+      case 'queue':
+         message.channel.send(guildQueue.songs.toString()) //TODO Embedにする
+         break
+      
+      case 'shuffle':
+         guildQueue?.shuffle() // TODO Embedにする
          break
 
       default:

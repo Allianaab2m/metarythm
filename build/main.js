@@ -13,25 +13,34 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 };
 Object.defineProperty(exports, "__esModule", { value: true });
 const discord_js_1 = require("discord.js");
-const voice_1 = require("@discordjs/voice");
-const ytdl_core_1 = __importDefault(require("ytdl-core"));
 const dotenv_1 = __importDefault(require("dotenv"));
-const adapter_1 = require("./adapter");
+const discord_music_player_1 = require("discord-music-player");
+// dotenv初期設定
 dotenv_1.default.config();
+// botバージョン指定 そこまで意味はない
 const bot_version = `0.1.0 Beta ${process.argv[2] ? '- Debug Mode' : ''}`;
+// prefix
 const prefix = 'm.';
+// Clientオブジェクトの作成
 const client = new discord_js_1.Client({
     intents: 32767,
-    partials: ['MESSAGE', 'CHANNEL', 'REACTION']
 });
+// Playerオブジェクトの作成
+const player = new discord_music_player_1.Player(client, {
+    leaveOnEmpty: true,
+    leaveOnStop: false,
+    deafenOnJoin: true,
+});
+// bot準備完了時の処理
 client.once('ready', () => {
     var _a;
     console.log('Ready!');
     console.log(`MetaRythm Ver${bot_version}`);
     console.log(`Logged in as ${(_a = client.user) === null || _a === void 0 ? void 0 : _a.tag}`);
 });
+// メッセージ受信時の処理
 client.on('messageCreate', (message) => __awaiter(void 0, void 0, void 0, function* () {
-    var _a, _b;
+    var _a;
     // bot,prefix無し,Guild以外のメッセージを弾く
     if (message.author.bot)
         return;
@@ -39,49 +48,35 @@ client.on('messageCreate', (message) => __awaiter(void 0, void 0, void 0, functi
         return;
     if (!message.guild)
         return;
+    // コマンドと引数を分割
     const [command, ...args] = message.content.slice(prefix.length).split(' ');
+    let guildQueue = player.createQueue(message.guild.id);
     switch (command) {
         case 'play':
             const url = args[0];
-            // url無い時，VCに入っていない時,videoIDが取れない時のコマンドは弾く
-            if (!url) {
-                message.channel.send('URLが指定されていないようです。'); // Embed
-                return;
-            }
-            if (((_a = message.member) === null || _a === void 0 ? void 0 : _a.voice.channel) === null) {
-                message.channel.send('VCに入っていないようです。'); // Embed Ref1
-                return;
-            }
-            if (!ytdl_core_1.default.validateURL(url)) {
-                message.channel.send('URLが正しくないようです。'); // Embed
-                return;
-            }
-            const authorVoiceChannel = (_b = message.member) === null || _b === void 0 ? void 0 : _b.voice.channel;
-            if (!authorVoiceChannel) {
-                message.channel.send('VCに入っていないようです。'); // Embed Ref1
-                return;
-            }
-            const connection = (0, voice_1.joinVoiceChannel)({
-                adapterCreator: (0, adapter_1.createDiscordJSAdapter)(authorVoiceChannel),
-                channelId: authorVoiceChannel.id,
-                guildId: authorVoiceChannel.guild.id,
-                selfDeaf: true,
-                selfMute: false,
+            let queue = player.createQueue(message.guild.id);
+            // ごめん，TypeScript as使うしか無かったんだ...
+            yield queue.join((_a = message.member) === null || _a === void 0 ? void 0 : _a.voice.channel); // TODO Embedで曲情報表示
+            let song = yield queue.play(url).catch(() => {
+                if (!guildQueue) {
+                    queue.stop();
+                }
             });
-            const player = (0, voice_1.createAudioPlayer)();
-            connection.subscribe(player);
-            const stream = (0, ytdl_core_1.default)(ytdl_core_1.default.getURLVideoID(url), {
-                filter: (format) => format.audioCodec === 'opus' && format.container === 'webm',
-                quality: 'highest',
-                highWaterMark: 32 * 1024 * 1024,
-            });
-            const resource = (0, voice_1.createAudioResource)(stream, {
-                inputType: voice_1.StreamType.WebmOpus
-            });
-            player.play(resource);
-            yield (0, voice_1.entersState)(player, voice_1.AudioPlayerStatus.Playing, 10 * 1000);
-            yield (0, voice_1.entersState)(player, voice_1.AudioPlayerStatus.Idle, 24 * 60 * 60 * 1000);
-            connection.destroy();
+            break;
+        case 'stop':
+            guildQueue === null || guildQueue === void 0 ? void 0 : guildQueue.setPaused(!guildQueue.paused); // TODO Embedにする
+            break;
+        case 'skip':
+            guildQueue === null || guildQueue === void 0 ? void 0 : guildQueue.skip(); // TODO Embedにする
+            break;
+        case 'disconnect':
+            guildQueue.destroy();
+            break;
+        case 'queue':
+            message.channel.send(guildQueue.songs.toString()); //TODO Embedにする
+            break;
+        case 'shuffle':
+            guildQueue === null || guildQueue === void 0 ? void 0 : guildQueue.shuffle(); // TODO Embedにする
             break;
         default:
             break;
